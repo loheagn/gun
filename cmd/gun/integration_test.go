@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,7 +31,11 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "create temp dir:", err)
 		os.Exit(1)
 	}
-	gunBinary = filepath.Join(tmpDir, "gun")
+	binaryName := "gun"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	gunBinary = filepath.Join(tmpDir, binaryName)
 	buildCmd := exec.Command("go", "build", "-o", gunBinary, "./cmd/gun")
 	buildCmd.Dir = repoRoot
 	if out, err := buildCmd.CombinedOutput(); err != nil {

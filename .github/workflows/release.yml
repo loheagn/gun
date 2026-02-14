@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-assets:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Build assets (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            archive_ext: tar.gz
+            exe_ext: ""
+          - goos: linux
+            goarch: arm64
+            archive_ext: tar.gz
+            exe_ext: ""
+          - goos: darwin
+            goarch: amd64
+            archive_ext: tar.gz
+            exe_ext: ""
+          - goos: darwin
+            goarch: arm64
+            archive_ext: tar.gz
+            exe_ext: ""
+          - goos: windows
+            goarch: amd64
+            archive_ext: zip
+            exe_ext: ".exe"
+          - goos: windows
+            goarch: arm64
+            archive_ext: zip
+            exe_ext: ".exe"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          base="gun_${tag}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          bin="gun${{ matrix.exe_ext }}"
+          build_dir="$(mktemp -d)"
+          out_dir="${GITHUB_WORKSPACE}/dist"
+          mkdir -p "${out_dir}"
+
+          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
+            go build -trimpath -ldflags="-s -w" -o "${build_dir}/${bin}" ./cmd/gun
+
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            (
+              cd "${build_dir}"
+              zip -q "${out_dir}/${base}.zip" "${bin}"
+            )
+          else
+            tar -C "${build_dir}" -czf "${out_dir}/${base}.tar.gz" "${bin}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    name: Publish release
+    needs: build-assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-assets/*
