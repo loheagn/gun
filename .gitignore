@@ -1,0 +1,18 @@
+# Binaries
+/gun
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Coverage
+*.out
+coverage.out
+
+# IDE/editor
+.DS_Store
+.vscode/
+.idea/
